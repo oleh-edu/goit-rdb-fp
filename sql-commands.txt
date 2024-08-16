@@ -1,0 +1,210 @@
+1. Upload the data.
+
+CREATE DATABASE pandemic;
+USE pandemic;
+
+Then use DBeaver to upload the data.
+
+2. Normalise the infectious_cases table to 3rd normal form. 
+Save the two tables with the normalised data in the same schema.
+
+Step 2.1: Create an Entities table to store unique entities.
+
+CREATE TABLE Entities (
+    EntityID INT AUTO_INCREMENT PRIMARY KEY,
+    Entity VARCHAR(255) NOT NULL,
+    Code VARCHAR(10) NOT NULL,
+    UNIQUE(Entity, Code)
+);
+
+Step 2.2: Create a Years table to store unique years.
+
+CREATE TABLE Years (
+    YearID INT AUTO_INCREMENT PRIMARY KEY,
+    Year INT NOT NULL UNIQUE
+);
+
+Step 2.3: Create a normalised NormalisedInfectiousCases table.
+
+CREATE TABLE NormalizedInfectiousCases (
+    CaseID INT AUTO_INCREMENT PRIMARY KEY,
+    EntityID INT,
+    YearID INT,
+    Number_yaws INT,
+    polio_cases INT,
+    cases_guinea_worm INT,
+    Number_rabies INT,
+    Number_malaria INT,
+    Number_hiv INT,
+    Number_tuberculosis INT,
+    Number_smallpox INT,
+    Number_cholera_cases INT,
+    FOREIGN KEY (EntityID) REFERENCES Entities(EntityID),
+    FOREIGN KEY (YearID) REFERENCES Years(YearID)
+);
+
+Step 2.4: Filling in the Entities table.
+
+INSERT INTO Entities (Entity, Code)
+SELECT DISTINCT Entity, Code FROM infectious_cases;
+
+Step 2.5: Filling in the Years table.
+
+INSERT INTO Years (Year)
+SELECT DISTINCT Year FROM infectious_cases;
+
+Step 2.6.1: Replace invalid values before inserting
+
+INSERT INTO NormalizedInfectiousCases (EntityID, YearID, Number_yaws, polio_cases, cases_guinea_worm, Number_rabies, Number_malaria, Number_hiv, Number_tuberculosis, Number_smallpox, Number_cholera_cases)
+SELECT
+    e.EntityID,
+    y.YearID,
+    CASE WHEN ic.Number_yaws = '' THEN NULL ELSE ic.Number_yaws END,
+    CASE WHEN ic.polio_cases = '' THEN NULL ELSE ic.polio_cases END,
+    CASE WHEN ic.cases_guinea_worm = '' THEN NULL ELSE ic.cases_guinea_worm END,
+    CASE WHEN ic.Number_rabies = '' THEN NULL ELSE ic.Number_rabies END,
+    CASE WHEN ic.Number_malaria = '' THEN NULL ELSE ic.Number_malaria END,
+    CASE WHEN ic.Number_hiv = '' THEN NULL ELSE ic.Number_hiv END,
+    CASE WHEN ic.Number_tuberculosis = '' THEN NULL ELSE ic.Number_tuberculosis END,
+    CASE WHEN ic.Number_smallpox = '' THEN NULL ELSE ic.Number_smallpox END,
+    CASE WHEN ic.Number_cholera_cases = '' THEN NULL ELSE ic.Number_cholera_cases END
+FROM
+    infectious_cases ic
+JOIN
+    Entities e ON ic.Entity = e.Entity AND ic.Code = e.Code
+JOIN
+    Years y ON ic.Year = y.Year;
+
+or
+
+Step 2.6.2: Filling in the NormalizedInfectiousCases table.
+
+INSERT INTO NormalizedInfectiousCases (EntityID, YearID, Number_yaws, polio_cases, cases_guinea_worm, Number_rabies, Number_malaria, Number_hiv, Number_tuberculosis, Number_smallpox, Number_cholera_cases)
+SELECT 
+    e.EntityID, 
+    y.YearID, 
+    ic.Number_yaws, 
+    ic.polio_cases, 
+    ic.cases_guinea_worm, 
+    ic.Number_rabies, 
+    ic.Number_malaria, 
+    ic.Number_hiv, 
+    ic.Number_tuberculosis, 
+    ic.Number_smallpox, 
+    ic.Number_cholera_cases
+FROM 
+    infectious_cases ic
+JOIN 
+    Entities e ON ic.Entity = e.Entity AND ic.Code = e.Code
+JOIN 
+    Years y ON ic.Year = y.Year;
+
+3. Analyse the data.
+
+Step 3.1: Replace empty values in Number_rabies with NULL.
+
+UPDATE NormalizedInfectiousCases
+SET Number_rabies = NULL
+WHERE Number_rabies = '';
+
+Step 3.2: Calculate the average, minimum, maximum, and sum.
+
+SELECT 
+    e.Entity, 
+    e.Code, 
+    AVG(nic.Number_rabies) AS avg_rabies, 
+    MIN(nic.Number_rabies) AS min_rabies, 
+    MAX(nic.Number_rabies) AS max_rabies, 
+    SUM(nic.Number_rabies) AS sum_rabies
+FROM 
+    NormalizedInfectiousCases nic
+JOIN 
+    Entities e ON nic.EntityID = e.EntityID
+WHERE 
+    nic.Number_rabies IS NOT NULL
+GROUP BY 
+    e.Entity, e.Code
+ORDER BY 
+    avg_rabies DESC
+LIMIT 10;
+
+4. Build the year difference column.
+
+Step 4.1: Create an attribute that contains the date of the first day of January of the relevant year.
+
+SELECT 
+    y.Year,
+    CONCAT(y.Year, '-01-01') AS first_january
+FROM 
+    NormalizedInfectiousCases nic
+JOIN 
+    Years y ON nic.YearID = y.YearID;
+
+Step 4.2: Create an attribute equal to the current date.
+
+SELECT
+    y.Year,
+    CONCAT(y.Year, '-01-01') AS first_january,
+    CURDATE() AS today_date
+FROM
+    NormalizedInfectiousCases nic
+JOIN
+    Years y ON nic.YearID = y.YearID;
+
+Step 4.3: Create an attribute equal to the difference in years between two dates.
+
+SELECT 
+    y.Year,
+    CONCAT(y.Year, '-01-01') AS first_january,
+    CURDATE() AS today_date,
+    TIMESTAMPDIFF(YEAR, CONCAT(y.Year, '-01-01'), CURDATE()) AS year_difference
+FROM 
+    NormalizedInfectiousCases nic
+JOIN 
+    Years y ON nic.YearID = y.YearID;
+
+Step 4.4: The final SQL query.
+
+SELECT 
+    y.Year AS original_year,
+    CONCAT(y.Year, '-01-01') AS first_january,
+    CURDATE() AS today_date,
+    TIMESTAMPDIFF(YEAR, CONCAT(y.Year, '-01-01'), CURDATE()) AS year_difference
+FROM 
+    NormalizedInfectiousCases nic
+JOIN 
+    Years y ON nic.YearID = y.YearID;
+
+5. Build your own function.
+
+Step: 5.1. Create a function.
+
+DELIMITER //
+
+CREATE FUNCTION year_difference(input_year INT)
+RETURNS INT
+DETERMINISTIC
+BEGIN
+    DECLARE first_january DATE;
+    DECLARE year_diff INT;
+
+    -- Create the date of the first day of January of the relevant year.
+    SET first_january = CONCAT(input_year, '-01-01');
+    
+    -- Calculate the difference in years between the current date and the date of the first of January.
+    SET year_diff = TIMESTAMPDIFF(YEAR, first_january, CURDATE());
+
+    RETURN year_diff;
+END //
+
+DELIMITER ;
+
+Step 5.2. Using the function.
+
+SELECT
+    y.Year,
+    year_difference(y.Year) AS year_diff
+FROM
+    NormalizedInfectiousCases nic
+JOIN
+    Years y ON nic.YearID = y.YearID;
